@@ -41,6 +41,15 @@ namespace WinSW.Native
             PolicyAccess desiredAccess,
             out IntPtr policyHandle);
 
+        [DllImport(Libraries.Advapi32, SetLastError = true)]
+        internal static extern bool DuplicateTokenEx(
+            IntPtr hExistingToken,
+            uint dwDesiredAccess,
+            IntPtr lpTokenAttributes,
+            SECURITY_IMPERSONATION_LEVEL impersonationLevel,
+            int dwTokenType,
+            ref IntPtr phNewToken);
+
         // POLICY_
         // https://docs.microsoft.com/windows/win32/secmgmt/policy-object-access-rights
         [Flags]
@@ -88,6 +97,14 @@ namespace WinSW.Native
             EXECUTE = 0x00020000,
 
             ALL = 0x001F0000,
+        }
+
+        internal enum SECURITY_IMPERSONATION_LEVEL : uint
+        {
+            SecurityAnonymous,
+            SecurityIdentification,
+            SecurityImpersonation,
+            SecurityDelegation
         }
 
         internal enum TOKEN_INFORMATION_CLASS

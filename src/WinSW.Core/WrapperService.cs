@@ -1,8 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.ServiceProcess;
 using System.Text;
 using System.Threading.Tasks;
@@ -11,6 +13,8 @@ using WinSW.Extensions;
 using WinSW.Logging;
 using WinSW.Native;
 using WinSW.Util;
+using static WinSW.Native.ProcessApis;
+using static WinSW.Native.SecurityApis;
 using Messages = WinSW.ServiceMessages;
 
 namespace WinSW
@@ -307,7 +311,15 @@ namespace WinSW
             this.ExtensionManager.FireOnWrapperStarted();
 
             var executableLogHandler = this.CreateExecutableLogHandler();
-            this.process = this.StartProcess(this.config.Executable, startArguments, executableLogHandler, this.OnMainProcessExited);
+            if (this.config.Interactive)
+            {
+                this.process = this.StartInteractiveProcess(this.config.Executable, startArguments, this.OnMainProcessExited);
+            }
+            else
+            {
+                this.process = this.StartProcess(this.config.Executable, startArguments, executableLogHandler, this.OnMainProcessExited);
+            }
+
             this.ExtensionManager.FireOnProcessStarted(this.process);
 
             var poststart = this.config.Poststart;
@@ -522,6 +534,77 @@ namespace WinSW
                     Environment.Exit(process.ExitCode);
                 }
             }
+        }
+
+        private Process StartInteractiveProcess(string executable, string? arguments, Action<Process>? onExited = null)
+        {
+            var sessionId = WtsApis.WTSGetActiveConsoleSessionId();
+            IntPtr hToken = IntPtr.Zero;
+            IntPtr dupToken = IntPtr.Zero;
+
+            if (!WtsApis.WTSQueryUserToken(sessionId, out hToken))
+            {
+                Log.Error($"WTSQueryUserToken {new Win32Exception()}.");
+            }
+
+            if (!SecurityApis.DuplicateTokenEx(hToken, GENERIC_ALL_ACCESS, IntPtr.Zero, SECURITY_IMPERSONATION_LEVEL.SecurityIdentification, 1, ref dupToken))
+            {
+                Log.Error($"DuplicateTokenEx {new Win32Exception()}.");
+            }
+
+            var environment = IntPtr.Zero;
+            if (!EnvApis.CreateEnvironmentBlock(out environment, dupToken, false))
+            {
+                Log.Error($"CreateEnvironmentBlock {new Win32Exception()}.");
+            }
+
+            if (!ProcessApis.CreateProcessAsUser(
+                    dupToken,
+                    null,
+                    $"{executable} {arguments}",
+                    IntPtr.Zero,
+                    IntPtr.Zero,
+                    false,
+                    CREATE_UNICODE_ENVIRONMENT,
+                    environment,
+                    this.config.WorkingDirectory,
+                    default,
+                    out var processInfo))
+            {
+                Log.Error($"CreateProcessAsUser {new Win32Exception()}.");
+            }
+
+            HandleApis.CloseHandle(dupToken);
+            HandleApis.CloseHandle(hToken);
+            EnvApis.DestroyEnvironmentBlock(environment);
+
+            var process = Process.GetProcessById(processInfo.ProcessId);
+
+            if (onExited != null)
+            {
+                process.Exited += (sender, _) =>
+                {
+                    var process = (Process)sender!;
+
+                    if (!process.EnableRaisingEvents)
+                    {
+                        return;
+                    }
+
+                    try
+                    {
+                        onExited(process);
+                    }
+                    catch (Exception e)
+                    {
+                        Log.Error("Unhandled exception in event handler.", e);
+                    }
+                };
+
+                process.EnableRaisingEvents = true;
+            }
+
+            return process;
         }
 
         /// <summary>

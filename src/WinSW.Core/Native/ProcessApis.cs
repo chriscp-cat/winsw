@@ -9,9 +9,28 @@ namespace WinSW.Native
     internal static class ProcessApis
     {
         internal const uint CREATE_NEW_PROCESS_GROUP = 0x00000200;
+        internal const uint GENERIC_ALL_ACCESS = 0x10000000;
+        internal const uint CREATE_UNICODE_ENVIRONMENT = 0x00000400;
+
+        [DllImport(Libraries.Kernel32, SetLastError = true)]
+        internal static extern uint GetProcessId(IntPtr handle);
 
         [DllImport(Libraries.Kernel32, SetLastError = true, CharSet = CharSet.Unicode, EntryPoint = "CreateProcessW")]
         internal static extern bool CreateProcess(
+            string? applicationName,
+            string? commandLine,
+            IntPtr processAttributes,
+            IntPtr threadAttributes,
+            bool inheritHandles,
+            uint creationFlags,
+            IntPtr environment,
+            string? currentDirectory,
+            in STARTUPINFO startupInfo,
+            out PROCESS_INFORMATION processInformation);
+
+        [DllImport(Libraries.Advapi32, SetLastError = true, CharSet = CharSet.Unicode, EntryPoint = "CreateProcessAsUserW")]
+        internal static extern bool CreateProcessAsUser(
+            IntPtr hToken,
             string? applicationName,
             string? commandLine,
             IntPtr processAttributes,

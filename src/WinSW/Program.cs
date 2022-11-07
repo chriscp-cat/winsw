@@ -421,7 +421,7 @@ namespace WinSW
                 }
 
                 bool saveCredential = false;
-                if (config.HasServiceAccount())
+                if (config.HasServiceAccount() && !config.Interactive)
                 {
                     username = config.ServiceAccountUserName ?? username;
                     password = config.ServiceAccountPassword ?? password;

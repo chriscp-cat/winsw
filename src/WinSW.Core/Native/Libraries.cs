@@ -7,5 +7,7 @@
         internal const string Kernel32 = "kernel32.dll";
         internal const string Mpr = "mpr.dll";
         internal const string NtDll = "ntdll.dll";
+        internal const string Wtsapi32 = "wtsapi32.dll";
+        internal const string UserEnv = "userenv.dll";
     }
 }
