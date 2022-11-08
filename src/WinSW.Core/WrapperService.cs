@@ -7,6 +7,7 @@ using System.Reflection;
 using System.Runtime.InteropServices;
 using System.ServiceProcess;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using log4net;
 using WinSW.Extensions;
@@ -15,6 +16,7 @@ using WinSW.Native;
 using WinSW.Util;
 using static WinSW.Native.ProcessApis;
 using static WinSW.Native.SecurityApis;
+using static WinSW.Native.WtsApis;
 using Messages = WinSW.ServiceMessages;
 
 namespace WinSW
@@ -538,18 +540,53 @@ namespace WinSW
 
         private Process StartInteractiveProcess(string executable, string? arguments, Action<Process>? onExited = null)
         {
-            var sessionId = WtsApis.WTSGetActiveConsoleSessionId();
-            IntPtr hToken = IntPtr.Zero;
             IntPtr dupToken = IntPtr.Zero;
-
-            if (!WtsApis.WTSQueryUserToken(sessionId, out hToken))
+            var dataSize = Marshal.SizeOf(typeof(WTS_SESSION_INFO));
+            while (true)
             {
-                Log.Error($"WTSQueryUserToken {new Win32Exception()}.");
-            }
+                IntPtr ppSessionInfo = IntPtr.Zero;
+                int sessionCount = 0;
+                var sessionId = 0;
+                if (WTSEnumerateSessions(IntPtr.Zero, 0, 1, ref ppSessionInfo, ref sessionCount) == 0)
+                {
+                    Log.Error($"WTSEnumerateSessions fail {new Win32Exception()}");
+                    continue;
+                }
 
-            if (!SecurityApis.DuplicateTokenEx(hToken, GENERIC_ALL_ACCESS, IntPtr.Zero, SECURITY_IMPERSONATION_LEVEL.SecurityIdentification, 1, ref dupToken))
-            {
-                Log.Error($"DuplicateTokenEx {new Win32Exception()}.");
+                IntPtr ptr = ppSessionInfo;
+
+                for (int i = 0; i < sessionCount; i++)
+                {
+                    WTS_SESSION_INFO si = Marshal.PtrToStructure<WTS_SESSION_INFO>(ptr);
+                    ptr += dataSize;
+                    var currentSessionId = si.SessionID;
+                    IntPtr pBuffer = IntPtr.Zero;
+                    if (si.State == WTS_CONNECTSTATE_CLASS.WTSActive)
+                    {
+                        sessionId = currentSessionId;
+                        break;
+                    }
+                }
+
+                WTSFreeMemory(ppSessionInfo);
+                if (sessionId == 0)
+                {
+                    continue;
+                }
+
+                if (WTSQueryUserToken(sessionId, out var hToken) && DuplicateTokenEx(
+                        hToken,
+                        GENERIC_ALL_ACCESS,
+                        IntPtr.Zero,
+                        SECURITY_IMPERSONATION_LEVEL.SecurityIdentification,
+                        1,
+                        ref dupToken))
+                {
+                    HandleApis.CloseHandle(hToken);
+                    break;
+                }
+
+                Thread.Sleep(100);
             }
 
             var environment = IntPtr.Zero;
@@ -575,7 +612,6 @@ namespace WinSW
             }
 
             HandleApis.CloseHandle(dupToken);
-            HandleApis.CloseHandle(hToken);
             EnvApis.DestroyEnvironmentBlock(environment);
 
             var process = Process.GetProcessById(processInfo.ProcessId);
