@@ -13,7 +13,7 @@ namespace WinSW.Native
         internal static extern uint WTSGetActiveConsoleSessionId();
 
         [DllImport(Libraries.Wtsapi32, SetLastError = true)]
-        internal static extern bool WTSQueryUserToken(int sessionId, out IntPtr hToken);
+        internal static extern bool WTSQueryUserToken(int sessionId, out Handle hToken);
 
         [DllImport(Libraries.Wtsapi32, SetLastError = true)]
         internal static extern int WTSEnumerateSessions(

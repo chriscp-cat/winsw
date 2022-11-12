@@ -43,12 +43,12 @@ namespace WinSW.Native
 
         [DllImport(Libraries.Advapi32, SetLastError = true)]
         internal static extern bool DuplicateTokenEx(
-            IntPtr hExistingToken,
+            Handle hExistingToken,
             uint dwDesiredAccess,
             IntPtr lpTokenAttributes,
             SECURITY_IMPERSONATION_LEVEL impersonationLevel,
             int dwTokenType,
-            ref IntPtr phNewToken);
+            ref Handle phNewToken);
 
         // POLICY_
         // https://docs.microsoft.com/windows/win32/secmgmt/policy-object-access-rights

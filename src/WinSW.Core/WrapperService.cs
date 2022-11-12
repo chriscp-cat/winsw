@@ -540,7 +540,7 @@ namespace WinSW
 
         private Process StartInteractiveProcess(string executable, string? arguments, Action<Process>? onExited = null)
         {
-            IntPtr dupToken = IntPtr.Zero;
+            Handle dupToken = new(IntPtr.Zero);
             var dataSize = Marshal.SizeOf(typeof(WTS_SESSION_INFO));
             while (true)
             {
@@ -582,7 +582,6 @@ namespace WinSW
                         1,
                         ref dupToken))
                 {
-                    HandleApis.CloseHandle(hToken);
                     break;
                 }
 
@@ -593,6 +592,18 @@ namespace WinSW
             if (!EnvApis.CreateEnvironmentBlock(out environment, dupToken, false))
             {
                 Log.Error($"CreateEnvironmentBlock {new Win32Exception()}.");
+            }
+
+            if (this.config.EnvironmentVariables.Count > 0)
+            {
+                var env = EnvironmentUtils.ParserEnvironmentString(environment);
+                foreach (var configEnvironmentVariable in this.config.EnvironmentVariables)
+                {
+                    env[configEnvironmentVariable.Key] = configEnvironmentVariable.Value;
+                }
+
+                char[] envBlock = EnvironmentUtils.EnvironmentToString(env);
+                environment = Marshal.UnsafeAddrOfPinnedArrayElement(envBlock, 0);
             }
 
             if (!ProcessApis.CreateProcessAsUser(
@@ -611,9 +622,7 @@ namespace WinSW
                 Log.Error($"CreateProcessAsUser {new Win32Exception()}.");
             }
 
-            HandleApis.CloseHandle(dupToken);
             EnvApis.DestroyEnvironmentBlock(environment);
-
             var process = Process.GetProcessById(processInfo.ProcessId);
 
             if (onExited != null)
